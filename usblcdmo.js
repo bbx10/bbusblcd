@@ -1,103 +1,116 @@
-var usblcd = require('./usblcdmo');
-var express = require('express');
-var app = express();
+'use strict';
 
-var fs = require('fs');
-var indexhtml = fs.readFileSync('./index.html');
+var SerialPort = require("serialport").SerialPort;
+var serialPort = new SerialPort("/dev/ttyACM0", { baudrate: 57600 });
+var Open = false;
+var SaveBuffer = new Buffer(1024);
+var SaveLen = 0;
 
-app.get('^/$', function (req, res) {
-   res.end(indexhtml, {'Content-Type': 'text/html'});
+function sp_write(data) {
+    if (Open) {
+        serialPort.write(data, function(err, results) {
+            console.log('err ' + err + ' results ' + results);
+        });
+    }
+    else {
+        if (Buffer.isBuffer(data)) {
+            data.copy(SaveBuffer, SaveLen);
+            SaveLen += data.length;
+        }
+        else {
+            new Buffer(data).copy(SaveBuffer, SaveLen);
+            SaveLen += data.length;
+        }
+        //console.log('SaveLen ' + SaveLen);
+    }
+}
+
+function show(data) {
+    console.log('show ' + data);
+    sp_write(data);
+}
+
+serialPort.on("open", function() {
+    Open = true;
+    serialPort.on("data", function (data) {
+        console.log('serialPort data');
+    });
+    serialPort.on("close", function (data) {
+        console.log('serialPort close');
+    });
+    //console.log('SaveBuffer ' + SaveBuffer.slice(0, SaveLen));
+    console.log('open, sending buffered data ' + SaveLen);
+    serialPort.write(SaveBuffer.slice(0, SaveLen), function(err, results) {
+        console.log('err ' + err + ' results ' + results);
+    });
+    SaveLen = 0;
 });
 
-app.get(/^\/clearscreen$/, function(req, res) {
+function backlight(data) {
+    console.log('backlight ' + data);
+    if (data === true || data === 1) {
+        sp_write([0xFE, 0x42, 0x00]);
+    }
+    else {
+        sp_write([0xFE, 0x46]);
+    }
+}
+
+function brightness(bright) {
+    console.log('brightness ' + bright);
+    sp_write([0xFE, 0x99, bright]);
+}
+
+function contrast(contr) {
+    console.log('contrast ' + contr);
+    sp_write([0xFE, 0x50, contr]);
+}
+
+function clearscreen() {
     console.log('clearscreen');
-    usblcd.clearscreen();
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-});
+    sp_write([0xFE, 0x58]);
+}
 
-app.get(/^\/backlight\/(\d)$/, function(req, res) {
-    var option = req.params[0];
-    console.log('backlight ' + option);
-    usblcd.backlight(option);
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-});
+function gotoxy(row,col) {
+    console.log('gotoxy ' + row + ' ' + col);
+    sp_write([0xFE, 0x47, row, col]);
+}
 
-app.get(/^\/blockcursor\/(\d+)$/, function(req, res) {
-    var option = req.params[0];
-    console.log('blockcursor ' + option);
-    usblcd.backlight(option);
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-});
+function binarychoice(featurename, onCode, offCode, data) {
+    console.log(featurename + ' ' + data);
+    if (data === true || data === 1) {
+        sp_write([0xFE, onCode]);
+    }
+    else {
+        sp_write([0xFE, offCode]);
+    }
+}
 
-app.get(/^\/contrast\/(\d+)$/, function(req, res) {
-    var option = req.params[0];
-    console.log('contrast ' + option);
-    usblcd.contrast(option);
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-});
+function autoscroll(data) {
+    binarychoice('autoscroll', 0x51, 0x52, data);
+}
 
-app.get(/^\/brightness\/(\d+)$/, function(req, res) {
-    var option = req.params[0];
-    console.log('brightness ' + option);
-    usblcd.brightness(option);
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-});
+function underlinecursor(data) {
+    binarychoice('underlinecursor', 0x4A, 0x4B, data);
+}
 
-app.get(/^\/backlightRGB\/(\d+)\/(\d+)\/(\d+)$/, function(req, res) {
-    var red = req.params[0];
-    var green = req.params[1];
-    var blue = req.params[2];
+function blockcursor(data) {
+    binarychoice('blockcursor', 0x53, 0x54, data);
+}
+
+function backlightRGB(red, green, blue) {
     console.log('backlightRGB ' + red + ' ' + green + ' ' + blue);
-    usblcd.backlightRGB(red, green, blue);
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-});
+    sp_write([0xFE, 0xD0, red, green, blue]);
+}
 
-app.get(/^\/show\/(.*)$/, function(req, res) {
-    var option = req.params[0];
-    console.log('show ' + option);
-    usblcd.show(option);
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-});
-
-app.get('^/quote1$', function(req, res) {
-    usblcd.clearscreen();
-    usblcd.show('node.js, use the force');
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-    });
-
-app.get('^/quote2$', function(req, res) {
-    usblcd.clearscreen();
-    usblcd.show('node.js,  phone home');
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-    });
-
-app.get('^/quote3$', function(req, res) {
-    usblcd.clearscreen();
-    usblcd.show('node.js, make my day');
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-    });
-
-app.get('^/quote4$', function(req, res) {
-    usblcd.clearscreen();
-    usblcd.show('Houston, we havea node.js');
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-    });
-
-app.get('^/quote5$', function(req, res) {
-    usblcd.clearscreen();
-    usblcd.show('node.js, you are our only hope');
-    res.end(indexhtml, {'Content-Type': 'text/html'});
-    });
-
-app.listen(4000);
-console.log('Listening on port 4000');
-
-usblcd.clearscreen();
-usblcd.backlight(true);
-usblcd.brightness(255);
-usblcd.contrast(200);
-usblcd.autoscroll(true);
-usblcd.backlightRGB(0,255,0);
-var now = new Date();
-usblcd.show(now.toDateString() + ' ' + now.toTimeString().slice(0, 8));
+exports.show = show;
+exports.backlight = backlight;
+exports.brightness = brightness;
+exports.contrast = contrast;
+exports.clearscreen = clearscreen;
+exports.gotoxy = gotoxy;
+exports.autoscroll = autoscroll;
+exports.underlinecursor = underlinecursor;
+exports.blockcursor = blockcursor;
+exports.backlightRGB = backlightRGB;
 
