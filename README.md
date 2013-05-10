@@ -21,8 +21,7 @@ Plug the LCD into the BB USB host port.
 
  # git clone git://github.com/bbx10/bbusblcd.git
  # cd bbusblcd
- # npm install serialport
- # npm install express
+ # npm install python-compiler serialport express
  # node lcdtest.js
 
 . Connect to the BB webapp from any device with a web browsing using the URL
